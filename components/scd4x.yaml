@@ -1,12 +1,3 @@
-api:
-  actions:
-    - action: calibrate_co2_value
-      variables:
-        co2_ppm: int
-      then:
-        - scd4x.perform_forced_calibration:
-            value: !lambda 'return co2_ppm;'
-            id: scd41_sensor
 
 sensor:
   - platform: scd4x
@@ -20,3 +11,13 @@ sensor:
     humidity:
       name: "Sensor Humidity"
       id: scd4x_hum
+
+api:
+  actions:
+    - action: calibrate_co2_value
+      variables:
+        co2_ppm: int
+      then:
+        - scd4x.perform_forced_calibration:
+            value: !lambda 'return co2_ppm;'
+            id: scd41_sensor
