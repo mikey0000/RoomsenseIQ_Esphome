@@ -1,0 +1,28 @@
+debug:
+  update_interval: 5s
+
+logger:
+  level: VERY_VERBOSE
+  logs: 
+    mdns: WARN
+    scd4x: WARN
+    sgp4x: WARN
+    scheduler: WARN 
+    api.service: WARN
+    api.connection: WARN
+    json: WARN
+    ld2410: WARN
+    ledc.output: WARN
+    esp32_ble_tracker: WARN
+    esp32_ble: WARN
+    bluetooth_proxy.connection: WARN
+    bluetooth_proxy: WARN
+    adc: WARN
+    
+    i2c: WARN
+    #mpm10: VERY_VERBOSE
+    wifi_info: WARN
+    wifi_signal: WARN
+    sensor: WARN
+    resistance: WARN
+    binary_sensor: WARN
