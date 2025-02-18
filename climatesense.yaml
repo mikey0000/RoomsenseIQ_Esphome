@@ -1,3 +1,4 @@
-<<: !include components/mpm10.yaml
-<<: !include components/scd4x.yaml
-<<: !include components/sgp4x.yaml
+packages:
+  mpm10: !include components/mpm10.yaml
+  scd4x: !include components/scd4x.yaml
+  sgp4x: !include components/sgp4x.yaml
