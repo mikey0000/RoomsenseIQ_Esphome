@@ -1,12 +1,18 @@
+on_...:
+  then:
+    - scd4x.perform_forced_calibration:
+        value: 419 # outside average April 2022
+        id: scd41_sensor
+
 api:
   actions:
     - action: calibrate_co2_value
       variables:
         co2_ppm: int
       then:
-      - scd4x.perform_forced_calibration:
-          value: !lambda 'return co2_ppm;'
-          id: scd41_sensor
+        - scd4x.perform_forced_calibration:
+            value: !lambda 'return co2_ppm;'
+            id: scd41_sensor
 
 sensor:
   - platform: scd4x
