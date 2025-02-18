@@ -1,0 +1,23 @@
+output:
+  - platform: ledc
+    pin: GPIO46
+    id: output_red
+    channel: 0
+    inverted: true
+  - platform: ledc
+    pin: GPIO10
+    id: output_green
+    channel: 1
+    inverted: true
+  - platform: ledc
+    pin: GPIO3
+    id: output_blue
+    channel: 2
+    inverted: true
+
+light:
+  - platform: rgb
+    name: "Status Light"
+    red: output_red
+    green: output_green
+    blue: output_blue

@@ -1,3 +1,7 @@
+bluetooth_proxy:
+
+web_server:
+
 i2c:
   sda: GPIO12
   scl: GPIO13
@@ -18,4 +22,4 @@ uart:
     #    - lambda: UARTDebug::log_string(direction, bytes);
 
 
-<<: !include components/ambient-light-sensor.yaml
+<<: !include components/ambient-light.yaml
