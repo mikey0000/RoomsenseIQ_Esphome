@@ -1,1 +1,21 @@
+i2c:
+  sda: GPIO12
+  scl: GPIO13
+  scan: true
+
+uart:
+  - tx_pin: GPIO9
+    rx_pin: GPIO8
+    parity: NONE
+    stop_bits: 1
+    baud_rate: 256000
+    #debug:
+    #  direction: BOTH
+    #  dummy_receiver: false
+    #  after:
+    #    delimiter: "\n"
+    #  sequence:
+    #    - lambda: UARTDebug::log_string(direction, bytes);
+
+
 <<: !include components/ambient-light-sensor.yaml
