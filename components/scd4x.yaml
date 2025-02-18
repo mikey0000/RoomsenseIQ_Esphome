@@ -1,9 +1,3 @@
-on_...:
-  then:
-    - scd4x.perform_forced_calibration:
-        value: 419 # outside average April 2022
-        id: scd41_sensor
-
 api:
   actions:
     - action: calibrate_co2_value
