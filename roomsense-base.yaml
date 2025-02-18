@@ -29,3 +29,5 @@ uart:
     #    - lambda: UARTDebug::log_string(direction, bytes);
 
 <<: !include components/ambient-light.yaml
+<<: !include components/led.yaml
+<<: !include components/ld2410.yaml
