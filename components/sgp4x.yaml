@@ -1,0 +1,10 @@
+sensor:
+  - platform: sgp4x
+    address: 0x59
+    voc:
+      name: "VOC Index"
+    nox:
+      name: "NOx Index"
+    compensation:
+      humidity_source: scd4x_hum
+      temperature_source: scd4x_temp

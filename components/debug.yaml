@@ -20,7 +20,7 @@ logger:
     adc: WARN
     
     i2c: WARN
-    #mpm10: VERY_VERBOSE
+    mpm10: WARN
     wifi_info: WARN
     wifi_signal: WARN
     sensor: WARN
