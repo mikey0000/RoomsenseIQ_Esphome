@@ -1,0 +1,36 @@
+sensor:
+  - platform: adc
+    id: photo_resistor
+    update_interval: 1s
+    pin: GPIO5
+    name: GPIO5 Voltage
+    attenuation: 12db
+    disabled_by_default: true
+
+  - platform: resistance
+    sensor: photo_resistor
+    configuration: UPSTREAM
+    resistor: 10kOhm
+    name: Resistance Sensor
+    disabled_by_default: true
+
+  - platform: template
+    unit_of_measurement: lx
+    device_class: illuminance
+    name: Ambient Light
+    update_interval: 1s
+    # L=10×(R1*(3.3−Vout)/(R10*Vout))^1/γ
+    # L=10×(0.75*(Vout/(3.3−Vout)))^1.67
+    # https://cdn-shop.adafruit.com/product-files/161/C2255-001_MFG_PN__HaiWang_MJ5516.pdf
+    lambda: |-
+      const double R10_to_R1_ratio = 0.75; // Ratio of R10 to R1 (7500 / 10000)
+      const double gamma_inverse = 1.67;  // 1 / gamma
+      const double V_supply = 3.3;        // Supply voltage (3.3V)
+      const double V_out = id(photo_resistor).state;
+      double lux = 0;
+      if (V_out <= 0 || V_out >= V_supply) {
+        ESP_LOGE("main", "V_out is out of range %f", V_out);
+      } else {
+        lux = 10 * pow(R10_to_R1_ratio * (V_out / (V_supply - V_out)), gamma_inverse);
+      }    
+      return lux;
