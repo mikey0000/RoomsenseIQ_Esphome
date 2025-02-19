@@ -2,3 +2,4 @@ packages:
   mpm10: !include components/mpm10.yaml
   scd4x: !include components/scd4x.yaml
   sgp4x: !include components/sgp4x.yaml
+  tgs5141: !include components/tgs5141.yaml

@@ -1,0 +1,20 @@
+sensor:
+  - platform: adc
+    pin: GPIO20
+    name: GPIO20 Voltage
+    id: gpio20_voltage
+    attenuation: 12db
+    disabled_by_default: true
+
+  - platform: template
+    unit_of_measurement: ppm
+    device_class: carbon_monoxide
+    name: CO
+    update_interval: 1s
+
+    lambda: |-     
+      const double voltage = id(gpio20_voltage).state;
+      const double multiplier = 1.11;
+      double reading = (voltage - 30) * multiplier;
+      if (reading < 0) reading = 0;
+      return reading;
