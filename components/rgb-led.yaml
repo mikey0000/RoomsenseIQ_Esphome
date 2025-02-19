@@ -22,11 +22,9 @@ light:
     green: output_green
     blue: output_blue
     effects:
-      - strobe:
-          name: OCCUPIED_LED
-          brightness: 10%
-          colors:
-            - state: true
-              red: 255
-              green: 120
-              blue: 0
+      - lambda:
+          name: "Occupied" # Static Orange
+          update_interval: never
+          lambda: |-
+            it.all().set_rgb(1.0, 0.5, 0.0);
+            it.all().set_brightness(0.1);
