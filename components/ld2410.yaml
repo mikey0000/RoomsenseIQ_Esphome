@@ -1,4 +1,20 @@
 ld2410:
+  uart_id : ld2410_uart
+
+uart:
+  - tx_pin: GPIO9
+    rx_pin: GPIO8
+    parity: NONE
+    stop_bits: 1
+    baud_rate: 256000
+    id: ld2410_uart
+    #debug:
+    #  direction: BOTH
+    #  dummy_receiver: false
+    #  after:
+    #    delimiter: "\n"
+    #  sequence:
+    #    - lambda: UARTDebug::log_string(direction, bytes);
 
 binary_sensor:
   - platform: ld2410
