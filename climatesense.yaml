@@ -1,4 +1,5 @@
 packages:
+  status-led: !include components/status-led.yaml
   mpm10: !include components/mpm10.yaml
   scd4x: !include components/scd4x.yaml
   sgp4x: !include components/sgp4x.yaml

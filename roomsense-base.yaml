@@ -15,6 +15,6 @@ i2c:
 
 packages:
   ambient-light: !include components/ambient-light.yaml
-  led: !include components/led.yaml
+  led: !include components/rgb-led.yaml
   ld2410: !include components/ld2410.yaml
   ira-s210st01: !include components/ira-s210st01.yaml
