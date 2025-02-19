@@ -21,3 +21,12 @@ light:
     red: output_red
     green: output_green
     blue: output_blue
+    effects:
+      - strobe:
+          name: OCCUPIED_LED
+          color_brightness: 10%
+          colors:
+            - state: true
+              red: 255
+              green: 120
+              blue: 0
