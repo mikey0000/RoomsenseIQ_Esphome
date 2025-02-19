@@ -4,7 +4,7 @@ sensor:
     id: scd41_sensor
     co2:
       name: "CO2"
-    temperature_offset: 12 # based on the firmware code of ther RoomsenseIQ itself
+    temperature_offset: 12 # based on the firmware code of the RoomsenseIQ itself
     temperature:
       name: "Sensor Temperature"
       id: scd4x_temp
