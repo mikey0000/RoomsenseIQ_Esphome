@@ -26,5 +26,7 @@ light:
           name: "Occupied" # Static Orange
           update_interval: never
           lambda: |-
-            it.all().set_rgb(1.0, 0.5, 0.0);
-            it.all().set_brightness(0.1);
+            auto call = id(my_light).turn_on();
+            call.set_rgb(0.1, 0.05, 0);
+            call.perform();
+
