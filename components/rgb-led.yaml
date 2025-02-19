@@ -24,7 +24,7 @@ light:
     effects:
       - strobe:
           name: OCCUPIED_LED
-          color_brightness: 10%
+          brightness: 10%
           colors:
             - state: true
               red: 255
