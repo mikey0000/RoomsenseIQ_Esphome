@@ -61,3 +61,22 @@ light:
               duration: 500ms
             - state: false
               duration: 250ms
+      - strobe:
+          name: "Wifi Disconnected"
+          colors:
+            - state: true
+              brightness: 75%
+              red: 100%
+              green: 50%
+              blue: 0%
+              duration: 500ms
+            - state: false
+              duration: 250ms
+            - state: true
+              brightness: 75%
+              red: 0%
+              green: 0%
+              blue: 50%
+              duration: 500ms
+            - state: false
+              duration: 250ms
