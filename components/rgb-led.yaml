@@ -43,7 +43,7 @@ light:
           name: "Elevated Airborne Pollution" # Flashing yellow
           colors:
             - state: true
-              brightness: 100%
+              brightness: 75%
               red: 100%
               green: 90%
               blue: 0%
@@ -54,7 +54,7 @@ light:
           name: "Extreme Airborne Pollution" # Flashing purple
           colors:
             - state: true
-              brightness: 100%
+              brightness: 75%
               red: 100%
               green: 0%
               blue: 100%
