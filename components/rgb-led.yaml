@@ -15,16 +15,6 @@ output:
     channel: 2
     inverted: true
 
-on_...:
-  if:
-    condition:
-      not:
-        wifi.connected:
-    then:
-      - light.turn_on: status_light
-      - light.set_effect: status_light
-        id: "Wifi Disconnected"
-
 light:
   - platform: rgb
     name: "Status Light"
