@@ -31,4 +31,33 @@ light:
             call.set_rgb(1, .5, 0);
             call.set_brightness(.5);
             call.perform();
-
+      - lambda:
+          name: "Vacant" # Static Blue
+          update_interval: never
+          lambda: |-
+            auto call = id(status_light).turn_on();
+            call.set_rgb(0, 0, 1);
+            call.set_brightness(.5);
+            call.perform();
+      - strobe:
+          name: "Elevated Airborne Pollution" # Flashing yellow
+          colors:
+            - state: true
+              brightness: 100%
+              red: 100%
+              green: 90%
+              blue: 0%
+              duration: 500ms
+            - state: false
+              duration: 250ms
+      - strobe:
+          name: "Extreme Airborne Pollution" # Flashing purple
+          colors:
+            - state: true
+              brightness: 100%
+              red: 100%
+              green: 0%
+              blue: 100%
+              duration: 500ms
+            - state: false
+              duration: 250ms
