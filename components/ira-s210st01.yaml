@@ -1,5 +1,15 @@
 binary_sensor:
   - platform: gpio
-    pin: GPIO48
+    pin:
+      number: GPIO48
+      mode:
+        input: true
+        pulldown: true
     name: "PIR Sensor"
+    id: pir
     device_class: motion
+    filters:
+      # Stock firmware implements a software one-shot: rising edge -> hold
+      # 2s -> 4s lockout before re-arming (pir-sensor.c). delayed_off: 6s
+      # approximates the combined 6s window and stops edge chatter.
+      - delayed_off: 6s

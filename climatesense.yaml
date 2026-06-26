@@ -1,6 +1,9 @@
 packages:
-  status-led: !include components/status-led.yaml
+  # environment sensors
   mpm10: !include components/mpm10.yaml
   scd4x: !include components/scd4x.yaml
   sgp4x: !include components/sgp4x.yaml
   tgs5141: !include components/tgs5141.yaml
+  # alerts / indicators (uses status_light from the base package set)
+  air-quality-alerts: !include components/air-quality-alerts.yaml
+  status-led: !include components/status-led.yaml

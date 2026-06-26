@@ -1,0 +1,46 @@
+# Occupancy fusion — YAML port of the stock PIR+radar state machine
+# (roomsense-iq/firmware/components/ha_mqtt/ha_mqtt.c:1210-1289, task_occupancy_state):
+#   VACANT -> OCCUPIED: PIR AND radar target present (radar alone in bedsense mode)
+#   OCCUPIED -> VACANT: PIR clear AND radar clear (radar alone in bedsense mode)
+# The state is latched and NVS-persisted (stock nvs_occupancy); the radar's own
+# absence timeout provides the vacate dwell. Stock evaluates this in a polled
+# task loop, mirrored here with a 1 s interval.
+# Stock target_status mapping: status 1/2/3 == has_target ON, status 0 == OFF.
+# Requires ids from ld2410.yaml (ld2410_has_target) and ira-s210st01.yaml (pir).
+
+globals:
+  - id: occupancy_state
+    type: bool
+    restore_value: true
+    initial_value: 'false'
+
+binary_sensor:
+  - platform: template
+    name: "Occupancy"
+    id: occupancy
+    device_class: occupancy
+    lambda: 'return id(occupancy_state);'
+
+switch:
+  - platform: template
+    name: "BedSense Mode"
+    id: bedsense_mode
+    optimistic: true
+    restore_mode: RESTORE_DEFAULT_OFF
+    entity_category: config
+    icon: mdi:bed
+
+interval:
+  - interval: 1s
+    then:
+      - lambda: |-
+          bool pir_on = id(pir).state;
+          bool radar_on = id(ld2410_has_target).state;
+          bool bedsense = id(bedsense_mode).state;
+          if (!id(occupancy_state) && radar_on && (pir_on || bedsense)) {
+            // entry requires PIR AND radar; bedsense mode ignores PIR
+            id(occupancy_state) = true;
+          } else if (id(occupancy_state) && !radar_on && (!pir_on || bedsense)) {
+            // exit requires both clear; radar timeout provides the dwell
+            id(occupancy_state) = false;
+          }

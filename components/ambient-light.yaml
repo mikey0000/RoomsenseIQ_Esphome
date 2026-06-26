@@ -2,10 +2,25 @@ sensor:
   - platform: adc
     id: photo_resistor
     update_interval: 1s
+    # GPIO5 = ADC1_CH4 on the ESP32-S3 — exactly stock's ADC_UNIT_1 +
+    # ADC_CHANNEL_4 (adafruit-161.c:25), pin confirmed against the
+    # esphome variant pin map.
     pin: GPIO5
     name: GPIO5 Voltage
     attenuation: 12db
     disabled_by_default: true
+    # stock multisamples 64 reads per measurement (adafruit-161.c:13)
+    samples: 64
+    filters:
+      # publish only meaningful changes; the lux template reads .state
+      # directly, so its own delta below handles output chatter
+      - delta: 0.01
+      # approximate stock's glitch filter (hold previous value on a
+      # >40-count jump, max 2 samples — adafruit-161.c:106-117)
+      - median:
+          window_size: 3
+          send_every: 1
+          send_first_at: 1
 
   - platform: resistance
     sensor: photo_resistor
@@ -13,24 +28,61 @@ sensor:
     resistor: 10kOhm
     name: Resistance Sensor
     disabled_by_default: true
+    filters:
+      - delta: 200  # ohms; diagnostic input for lux calibration only
 
   - platform: template
     unit_of_measurement: lx
     device_class: illuminance
+    state_class: measurement
     name: Ambient Light
     update_interval: 1s
-    # L=10×(R1*(3.3−Vout)/(R10*Vout))^1/γ
-    # L=10×(0.75*(Vout/(3.3−Vout)))^1.67
+    filters:
+      - delta: 0.5  # lx; drop repeated identical publishes
+    # LDR upstream to 3.3V, 10k to GND: R_ldr = R1*(3.3−Vout)/Vout
+    # Photocell law: L = 10*(R10/R_ldr)^(1/γ), γ≈0.6 (MJ5516 datasheet)
+    # => L = 10*((R10/R1)*(Vout/(3.3−Vout)))^(1/γ)
     # https://cdn-shop.adafruit.com/product-files/161/C2255-001_MFG_PN__HaiWang_MJ5516.pdf
+    # R10/R1 and 1/γ are HA-adjustable numbers below: part-to-part LDR
+    # spread plus enclosure shading make fixed datasheet constants read
+    # ~10x low. Two-point calibration against a reference lux meter:
+    #   γ = log(R₁/R₂)/log(L₂/L₁); ratio = (R1_fixed⁻¹)·R₁·(10/L₁)^γ
+    # using the (disabled-by-default) Resistance Sensor entity for R.
     lambda: |-
-      const double R10_to_R1_ratio = 0.75; // Ratio of R10 to R1 (7500 / 10000)
-      const double gamma_inverse = 1.67;  // 1 / gamma
-      const double V_supply = 3.3;        // Supply voltage (3.3V)
+      const double V_supply = 3.3;
       const double V_out = id(photo_resistor).state;
       double lux = 0;
       if (V_out <= 0 || V_out >= V_supply) {
         ESP_LOGE("main", "V_out is out of range %f", V_out);
       } else {
-        lux = 10 * pow(R10_to_R1_ratio * (V_out / (V_supply - V_out)), gamma_inverse);
-      }    
+        lux = 10 * pow(id(light_cal_ratio).state * (V_out / (V_supply - V_out)),
+                       id(light_cal_gamma_inv).state);
+      }
       return lux;
+
+number:
+  - platform: template
+    name: "Light Cal R10 to R1 Ratio"
+    id: light_cal_ratio
+    optimistic: true
+    restore_value: true
+    # fitted from a 78 lx reference reading (device was showing 6.3 with
+    # the datasheet 0.75): effective R10 ~34k, dominated by enclosure
+    # shading. Refine via the two-point procedure above.
+    initial_value: 3.4
+    min_value: 0.1
+    max_value: 10
+    step: 0.05
+    entity_category: config
+    icon: mdi:tune
+  - platform: template
+    name: "Light Cal Inverse Gamma"
+    id: light_cal_gamma_inv
+    optimistic: true
+    restore_value: true
+    initial_value: 1.67  # datasheet γ=0.6; LDR spread 0.5-0.7 -> 1.4-2.0
+    min_value: 1.0
+    max_value: 3.0
+    step: 0.01
+    entity_category: config
+    icon: mdi:tune

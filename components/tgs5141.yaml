@@ -10,7 +10,9 @@ sensor:
     unit_of_measurement: ppm
     device_class: carbon_monoxide
     name: CO
-    update_interval: 1s
+    update_interval: 10s
+    filters:
+      - delta: 0.5  # ppm; reads constant 0 until the #5 domain fix anyway
 
     lambda: |-     
       const double voltage = id(gpio20_voltage).state;

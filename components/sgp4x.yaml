@@ -1,8 +1,20 @@
 sensor:
   - platform: sgp4x
     address: 0x59
+    store_baseline: true  # better than stock, which loses the baseline on reboot
     voc:
       name: "VOC Index"
+      id: voc_index
+      algorithm_tuning:
+        # stock runs the Sensirion VOC algorithm with default tuning except
+        # gating = 180 min (sensirion_voc_algorithm.h:43, 60*3); ESPHome's
+        # default is 720 min.
+        gating_max_duration_minutes: 180
+    # BOM varies: some boards carry an SGP41 (NOx-capable; confirmed by live
+    # NOx readings — the component publishes NOx only after positively
+    # identifying SGP41 via the featureset register, sgp4x.cpp:43). On true
+    # SGP40 boards ESPHome disables this sensor cleanly at boot. Stock
+    # firmware never used NOx regardless of chip.
     nox:
       name: "NOx Index"
     compensation:

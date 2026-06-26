@@ -14,7 +14,12 @@ i2c:
   scan: true
 
 packages:
+  # presence / motion stack
+  ld2410: !include components/ld2410.yaml
+  ld2410-calibration: !include components/ld2410-calibration.yaml
+  ira-s210st01: !include components/ira-s210st01.yaml
+  direction-detection: !include components/direction-detection.yaml
+  occupancy: !include components/occupancy.yaml
+  # environment / indicators
   ambient-light: !include components/ambient-light.yaml
   led: !include components/rgb-led.yaml
-  ld2410: !include components/ld2410.yaml
-  ira-s210st01: !include components/ira-s210st01.yaml

@@ -1,0 +1,137 @@
+# Air-quality LED alerts — YAML port of the stock pollutant threshold logic
+# (roomsense-iq/firmware/main/climatesense.c actionable-insight functions).
+# A 5 s loop computes the max alert level across all pollutants and drives the
+# status light effects defined in rgb-led.yaml. Evaluated as a loop (like the
+# stock climatesense task) rather than per-sensor on_value_range triggers,
+# which fight each other when one pollutant clears while another is elevated.
+#
+# Level 1 (Elevated, yellow strobe)   Level 2 (Extreme, purple strobe)
+#   CO2 801-1000 ppm (:259-268)         CO2 > 1000 ppm (:269-278)
+#   VOC index 131-279 (:177-196)        VOC index >= 280 (:197-206)
+#   any PM 25-74 µg/m³ (:214-225)       any PM >= 75 µg/m³ (:227-238)
+#   temp <= dew point (mold, :100-120)
+#
+# With no alert active the LED falls back to the occupancy state (steady
+# orange Occupied / steady blue Vacant), mirroring stock's alert-over-state
+# layering (rgb_led.c: alert bits checked before rgb_led_state).
+# Boot warm-up gating and the led_enable master switch live in this loop
+# (issue #10). Stock's connectivity LED states are deliberately NOT ported:
+# ESPHome's built-in status_led (GPIO18) already signals connectivity.
+# CO > 20 ppm -> extreme is pending the CO sensor fix (#5, no co_ppm yet).
+# Requires ids: scd4x_co2, voc_index, pm_1_0/pm_2_5/pm_10_0, scd4x_temp,
+# dew_point (climatesense set); status_light (rgb-led.yaml) and
+# occupancy_state (occupancy.yaml) from the base set.
+
+globals:
+  - id: air_alert_level
+    type: int
+    initial_value: '0'
+
+number:
+  # Stock defaults (climatesense.c:259-278). Health-literature scales
+  # (e.g. 400-1000 good / 1000-2000 drowsy / 2000+ bad) suggest higher
+  # values - adjust from HA to taste; persisted across reboots.
+  - platform: template
+    name: "CO2 Alert Threshold Elevated"
+    id: co2_thr_elevated
+    optimistic: true
+    restore_value: true
+    initial_value: 800
+    min_value: 400
+    max_value: 5000
+    step: 50
+    unit_of_measurement: ppm
+    entity_category: config
+    icon: mdi:tune
+  - platform: template
+    name: "CO2 Alert Threshold Extreme"
+    id: co2_thr_extreme
+    optimistic: true
+    restore_value: true
+    initial_value: 1000
+    min_value: 400
+    max_value: 5000
+    step: 50
+    unit_of_measurement: ppm
+    entity_category: config
+    icon: mdi:tune
+
+text_sensor:
+  - platform: template
+    name: "Air Quality Alert Source"
+    id: air_alert_source
+    entity_category: diagnostic
+    icon: mdi:alert-circle-outline
+    update_interval: never
+
+sensor:
+  - platform: template
+    name: "Air Quality Alert Level"
+    id: air_alert_level_sensor
+    entity_category: diagnostic
+    accuracy_decimals: 0
+    state_class: measurement
+    update_interval: never
+
+interval:
+  - interval: 5s
+    then:
+      - lambda: |-
+          // master enable (stock rgb_led.c:134): off -> LED dark, nothing else runs
+          static const char *last_effect = nullptr;
+          if (!id(led_enable).state) {
+            if (last_effect == nullptr || strcmp(last_effect, "off") != 0) {
+              last_effect = "off";
+              auto call = id(status_light).turn_off();
+              call.set_effect("None");
+              call.perform();
+            }
+            return;
+          }
+
+          int level = 0;
+          float co2 = id(scd4x_co2).state;
+          float voc = id(voc_index).state;
+          float p1 = id(pm_1_0).state, p25 = id(pm_2_5).state, p10 = id(pm_10_0).state;
+          float t = id(scd4x_temp).state, dp = id(dew_point).state;
+
+          std::string src;
+          if (!isnan(co2)) {
+            if (co2 > id(co2_thr_extreme).state) { level = std::max(level, 2); src += "co2:extreme "; }
+            else if (co2 > id(co2_thr_elevated).state) { level = std::max(level, 1); src += "co2 "; }
+          }
+          if (!isnan(voc) && voc > 0) {  // 0 = algorithm warming up (stock :156)
+            if (voc >= 280) { level = std::max(level, 2); src += "voc:extreme "; }
+            else if (voc > 130) { level = std::max(level, 1); src += "voc "; }
+          }
+          if (!isnan(p1) && !isnan(p25) && !isnan(p10)) {
+            if (p1 >= 75 || p25 >= 75 || p10 >= 75) { level = std::max(level, 2); src += "pm:extreme "; }
+            else if (p1 >= 25 || p25 >= 25 || p10 >= 25) { level = std::max(level, 1); src += "pm "; }
+          }
+          if (!isnan(t) && !isnan(dp) && t <= dp) { level = std::max(level, 1); src += "mold "; }
+          if (src.empty()) src = "none";
+          if (id(air_alert_source).state != src) id(air_alert_source).publish_state(src);
+
+          // boot warm-up: stock suppresses alerts for ALERT_WARM_UP_PERIOD
+          // (10 cycles x ~4.5s scan ~= 45s, climatesense.c:37,433) to avoid
+          // false alerts from settling sensors.
+          if (millis() < 45000) level = 0;
+
+          if (level != id(air_alert_level)) {
+            id(air_alert_level) = level;
+            id(air_alert_level_sensor).publish_state(level);
+          }
+
+          // LED select: calibration indication > alert > occupancy state.
+          const char *effect;
+          if (id(co2_calibrating)) effect = "Calibrating";
+          else if (level == 2) effect = "Extreme Airborne Pollution";
+          else if (level == 1) effect = "Elevated Airborne Pollution";
+          else                 effect = id(occupancy_state) ? "Occupied" : "Vacant";
+
+          if (last_effect == nullptr || strcmp(effect, last_effect) != 0) {
+            last_effect = effect;
+            auto call = id(status_light).turn_on();
+            call.set_effect(effect);
+            call.perform();
+          }

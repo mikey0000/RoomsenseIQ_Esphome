@@ -1,0 +1,161 @@
+# LD2410 auto-calibration — YAML port of the stock baseline/blindspot tasks
+# (roomsense-iq/firmware/components/ld2410/ld2410.c:1119-1322):
+#  - Baseline ("empty room"): sample all 18 per-gate energies @100 ms for 10 s
+#    (BASELINE_CALIBRATION_DURATION_SECONDS, ld2410.c:49), track per-gate MAX,
+#    threshold = max+5 clamped to [5,100], write to the radar.
+#  - Blindspot ("worst spot occupied"): same sampling tracking per-gate MIN;
+#    min <= 5 keeps the baseline value, else threshold = min-5 floored at the
+#    baseline; whenever floored, raise the absence timeout to >= 30 s.
+# Writes go through the built-in ld2410 threshold number entities; the radar
+# persists them in its own flash. Baseline thresholds are NVS-persisted here
+# because blindspot needs them as a floor.
+# Requires ids from ld2410.yaml: g{0..8}_{move,still}_{energy,threshold},
+# ld2410_timeout, ld2410_engineering_mode.
+
+globals:
+  - id: autocal_active
+    type: bool
+    initial_value: 'false'
+  - id: autocal_max_move
+    type: std::array<uint8_t, 9>
+  - id: autocal_max_still
+    type: std::array<uint8_t, 9>
+  - id: autocal_min_move
+    type: std::array<uint8_t, 9>
+  - id: autocal_min_still
+    type: std::array<uint8_t, 9>
+  - id: baseline_thr_move
+    type: std::array<uint8_t, 9>
+    restore_value: true
+  - id: baseline_thr_still
+    type: std::array<uint8_t, 9>
+    restore_value: true
+
+# Sampling tick: cheap no-op unless a calibration window is open.
+interval:
+  - interval: 100ms
+    then:
+      - lambda: |-
+          if (!id(autocal_active))
+            return;
+          const float me[9] = {
+            id(g0_move_energy).state, id(g1_move_energy).state, id(g2_move_energy).state,
+            id(g3_move_energy).state, id(g4_move_energy).state, id(g5_move_energy).state,
+            id(g6_move_energy).state, id(g7_move_energy).state, id(g8_move_energy).state};
+          const float se[9] = {
+            id(g0_still_energy).state, id(g1_still_energy).state, id(g2_still_energy).state,
+            id(g3_still_energy).state, id(g4_still_energy).state, id(g5_still_energy).state,
+            id(g6_still_energy).state, id(g7_still_energy).state, id(g8_still_energy).state};
+          for (int i = 0; i < 9; i++) {
+            if (!isnan(me[i])) {
+              uint8_t v = (uint8_t) me[i];
+              if (v > id(autocal_max_move)[i]) id(autocal_max_move)[i] = v;
+              if (v < id(autocal_min_move)[i]) id(autocal_min_move)[i] = v;
+            }
+            if (!isnan(se[i])) {
+              uint8_t v = (uint8_t) se[i];
+              if (v > id(autocal_max_still)[i]) id(autocal_max_still)[i] = v;
+              if (v < id(autocal_min_still)[i]) id(autocal_min_still)[i] = v;
+            }
+          }
+
+script:
+  - id: autocal_sample_window
+    mode: single
+    then:
+      - switch.turn_on: ld2410_engineering_mode
+      # let engineering-mode frames start flowing before sampling
+      - delay: 3s
+      - lambda: |-
+          id(autocal_max_move).fill(0);
+          id(autocal_max_still).fill(0);
+          id(autocal_min_move).fill(100);
+          id(autocal_min_still).fill(100);
+          id(autocal_active) = true;
+      - delay: 10s  # BASELINE_CALIBRATION_DURATION_SECONDS
+      - lambda: 'id(autocal_active) = false;'
+
+  - id: ld2410_baseline_calibration
+    mode: single
+    then:
+      - logger.log: "LD2410 baseline calibration: sampling 10s, keep the room EMPTY"
+      - script.execute: autocal_sample_window
+      - script.wait: autocal_sample_window
+      - lambda: |-
+          esphome::number::Number *mt[9] = {
+            id(g0_move_threshold), id(g1_move_threshold), id(g2_move_threshold),
+            id(g3_move_threshold), id(g4_move_threshold), id(g5_move_threshold),
+            id(g6_move_threshold), id(g7_move_threshold), id(g8_move_threshold)};
+          esphome::number::Number *st[9] = {
+            id(g0_still_threshold), id(g1_still_threshold), id(g2_still_threshold),
+            id(g3_still_threshold), id(g4_still_threshold), id(g5_still_threshold),
+            id(g6_still_threshold), id(g7_still_threshold), id(g8_still_threshold)};
+          for (int i = 0; i < 9; i++) {
+            // stock: max+5, clamp to 100, never 0 (-> 5)  (ld2410.c:1171-1189)
+            int m = id(autocal_max_move)[i] + 5;
+            if (m >= 100) m = 100;
+            if (m <= 5) m = 5;
+            int s = id(autocal_max_still)[i] + 5;
+            if (s >= 100) s = 100;
+            if (s <= 5) s = 5;
+            id(baseline_thr_move)[i] = m;
+            id(baseline_thr_still)[i] = s;
+            mt[i]->make_call().set_value(m).perform();
+            st[i]->make_call().set_value(s).perform();
+          }
+      - logger.log: "LD2410 baseline calibration done, thresholds written"
+
+  - id: ld2410_blindspot_calibration
+    mode: single
+    then:
+      - logger.log: "LD2410 blindspot calibration: sampling 10s, OCCUPY the blind spot"
+      - script.execute: autocal_sample_window
+      - script.wait: autocal_sample_window
+      - lambda: |-
+          esphome::number::Number *mt[9] = {
+            id(g0_move_threshold), id(g1_move_threshold), id(g2_move_threshold),
+            id(g3_move_threshold), id(g4_move_threshold), id(g5_move_threshold),
+            id(g6_move_threshold), id(g7_move_threshold), id(g8_move_threshold)};
+          esphome::number::Number *st[9] = {
+            id(g0_still_threshold), id(g1_still_threshold), id(g2_still_threshold),
+            id(g3_still_threshold), id(g4_still_threshold), id(g5_still_threshold),
+            id(g6_still_threshold), id(g7_still_threshold), id(g8_still_threshold)};
+          bool floored = false;
+          for (int i = 0; i < 9; i++) {
+            // stock: min<=5 -> keep baseline; else min-5, floored at the
+            // baseline (raising the absence timeout instead)  (ld2410.c:1268-1320)
+            int m;
+            if (id(autocal_min_move)[i] <= 5) {
+              m = id(baseline_thr_move)[i];
+            } else {
+              m = id(autocal_min_move)[i] - 5;
+              if (m <= id(baseline_thr_move)[i]) { m = id(baseline_thr_move)[i]; floored = true; }
+            }
+            int s;
+            if (id(autocal_min_still)[i] <= 5) {
+              s = id(baseline_thr_still)[i];
+            } else {
+              s = id(autocal_min_still)[i] - 5;
+              if (s <= id(baseline_thr_still)[i]) { s = id(baseline_thr_still)[i]; floored = true; }
+            }
+            mt[i]->make_call().set_value(m).perform();
+            st[i]->make_call().set_value(s).perform();
+          }
+          if (floored && id(ld2410_timeout).state < 30) {
+            id(ld2410_timeout).make_call().set_value(30).perform();
+          }
+      - logger.log: "LD2410 blindspot calibration done, thresholds written"
+
+button:
+  - platform: template
+    name: "LD2410 Baseline Calibration"
+    entity_category: config
+    icon: mdi:radar
+    on_press:
+      - script.execute: ld2410_baseline_calibration
+  - platform: template
+    name: "LD2410 Blindspot Calibration"
+    entity_category: config
+    icon: mdi:radar
+    on_press:
+      - script.execute: ld2410_blindspot_calibration

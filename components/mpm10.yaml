@@ -1,12 +1,19 @@
 external_components:
-  - source: github://talmuth/esphome_components
+  - source:
+      type: git
+      url: https://github.com/talmuth/esphome_components.git
+      ref: master
     components: [ mpm10 ]
+    refresh: 0s
 
 sensor:
   - platform: mpm10
     pm_1_0:
       name: "PM <1µm concentration value (standard particulate matter)"
+      id: pm_1_0
     pm_2_5:
       name: "PM <2.5µm concentration value (standard particulate matter)"
+      id: pm_2_5
     pm_10_0:
       name: "PM <10µm concentration value (standard particulate matter)"
+      id: pm_10_0

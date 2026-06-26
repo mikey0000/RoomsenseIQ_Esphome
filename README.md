@@ -1,107 +1,131 @@
-# 🏠 RoomsenseIQ ESPHome Configuration
+# RoomsenseIQ on ESPHome
 
-This repository contains ESPHome configuration files for a [Roomsense IQ](https://www.roomsenselabs.com/) environmental monitoring device based on ESP32-S3.
+ESPHome configuration that runs a [RoomsenseIQ](https://www.roomsenselabs.com/)
+ESP32-S3 environmental monitor as a pure ESPHome device, reimplementing the
+stock firmware's sensor calibration, math, and on-device behaviour (RGB status
+LED, calibration flows). The stock ESP-IDF firmware is treated as the spec of
+truth; every non-obvious value is annotated with the stock source line it
+mirrors.
 
-## 🌟 Overview
+## What it measures
 
-RoomsenseIQ is an advanced indoor environmental quality monitor that tracks multiple parameters:
+- Temperature & humidity - SCD4x
+- CO2 - SCD4x (with one-tap forced recalibration)
+- VOC & NOx indices - SGP4x
+- Particulate matter (PM1.0 / PM2.5 / PM10) - MPM10 ([custom component](https://github.com/talmuth/esphome_components/tree/master/components/mpm10))
+- Carbon monoxide - TGS5141 (ADC, see Notes)
+- Ambient light - photoresistor
+- Presence / occupancy - LD2410 mmWave radar
+- Motion - IRA-S210ST01 PIR
+- Dew point + mold risk - derived from SCD4x (Magnus formula, stock parity)
 
-- 🌡️ Temperature and humidity (SCD4x sensor)
-- 🟩 CO2 levels (SCD4x sensor)
-- 🧪 VOC and NOx indices (SGP4x sensor)
-- 🌫️ Particulate matter (MPM10 sensor)
-- 🚨 Carbon monoxide (TGS5141 sensor)
-- 💡 Ambient light levels
-- 🧍 Room occupancy/presence detection (LD2410 mmWave radar)
-- 👀 Motion detection (PIR sensor)
+## On-device behaviour (ported from stock firmware)
 
-## 🛠️ Hardware
+- **Occupancy fusion** - PIR + radar state machine with a BedSense mode
+  (radar-only) and NVS-persisted latched state.
+- **Direction detection** - towards/away movement from radar distance deltas
+  with stock hysteresis, suppressed in the radar's unreliable close range.
+- **LD2410 auto-calibration** - baseline ("empty room") and blindspot
+  ("worst spot occupied") buttons that sample per-gate energies and write the
+  radar thresholds, mirroring the stock calibration tasks.
+- **Air-quality LED alerts** - a 5 s loop drives the status light off stock
+  pollutant thresholds (CO2 / VOC / PM / mold), layered over the occupancy
+  state, with a distinct calibration indication.
+- **CO2 forced calibration** - one-tap button that runs the stock 3-minute
+  fresh-air dwell, performs the FRC at 421 ppm, and records the calibration
+  date as a diagnostic sensor.
 
-- 🖥️ ESP32-S3 development board
-- 🟩 SCD4x CO2 sensor
-- 🧪 SGP4x gas sensor
-- 🌫️ MPM10 particulate matter sensor
-- 🚨 TGS5141 CO sensor
-- 🧍 LD2410 mmWave radar sensor
-- 👀 IRA-S210ST01 PIR motion sensor
-- 🌈 RGB LED for status indication
-- 💡 Photoresistor for ambient light sensing
+### Status LED states
 
-## ❓ Why not stock firmware?
+| State | Appearance |
+|-------|-----------|
+| Occupied | steady orange |
+| Vacant | steady blue |
+| Elevated air pollution | yellow strobe |
+| Extreme air pollution | purple strobe |
+| CO2 calibrating | cyan strobe |
+| Wi-Fi disconnected | orange/blue alternating |
 
-I've got multiple devices with intent installing ESPHome on them, so for me it was just "Why Not?" 😄. I wanted to use them as bluetooth proxies, and ESPHome is an easy way to do so.
-However, after receiving the devices I discovered a couple of issues with the stock firmware:
+All effect values are stock PWM duties (gamma correction disabled to keep them faithful).
 
-- 🏷️ Devices are automatically detected by HomeAssistant via MQTT integration, but are effectively added as a set of sensors under one single device ([roomsense/firmware/issues/13](https://github.com/roomsense/firmware/issues/13));
-- 📡 Even after the device has been successfully connected to Wi-Fi, it continues to broadcast its setup access point with the default password, which appears to be a conscious choice by the authors ([roomsense/firmware/issues/1](https://github.com/roomsense/firmware/issues/1));
-- 💤 Authors seem to have abandoned the device and haven't released any new firmware updates since Sep 3, 2024.
+## Hardware
 
-## 🗂️ Configuration Structure
+ESP32-S3 (`esp32-s3-devkitc-1`, esp-idf framework). I²C bus on `sda: GPIO12`,
+`scl: GPIO13`. Sensors: SCD4x, SGP4x, MPM10, TGS5141, LD2410, IRA-S210ST01,
+RGB status LED, photoresistor.
 
-- `roomsense-base.yaml`: Base configuration with core components, includes:
-      - `components/ambient-light.yaml`: 💡 Ambient light sensor configuration
-      - `components/rgb-led.yaml`: 🌈 RGB status LED
-      - `components/ld2410.yaml`: 🧍 mmWave presence detection
-      - `components/ira-s210st01.yaml`: 👀 PIR motion sensor
+## Configuration structure
 
-- `climatesense.yaml`: Configuration focused on environmental sensors present on [ClimateSense](https://www.roomsenselabs.com/climatesense) expansion board
-      - `components/mpm10.yaml`: 🌫️ Particulate matter sensor, via custom component ([mpm10 custom component](https://github.com/talmuth/esphome_components/tree/master/components/mpm10))
-      - `components/scd4x.yaml`: 🟩 CO2, temperature and humidity sensor
-      - `components/sgp4x.yaml`: 🧪 VOC and NOx sensor
-      - `components/status-led.yaml`: 🌈 Status LED configuration
-      - `components/tgs5141.yaml`: 🚨 CO sensor configuration, see Notes below
+These YAML files are **package fragments**, not full device configs - each is
+self-contained and meant to be included remotely as an ESPHome `package`.
 
-- `components/debug.yaml`: 🐞 Debugging settings
+- **`roomsense-base.yaml`** - base device: bluetooth_proxy, web_server, I²C,
+  and the presence/motion/light/LED stack. Pulls in
+  `components/{ld2410, ld2410-calibration, ira-s210st01, direction-detection, occupancy, ambient-light, rgb-led}.yaml`.
+- **`climatesense.yaml`** - ClimateSense expansion board: environmental
+  sensors. Pulls in `components/{mpm10, scd4x, sgp4x, tgs5141, air-quality-alerts, status-led}.yaml`.
+- **`components/*.yaml`** - one fragment per sensor/feature.
+- **`components/debug.yaml`** - debug settings.
 
-## ⚙️ Configuration and Installation
+## Why not stock firmware?
 
-Since the device itself is based on ESP32, installation is not different from any other case when flashed over USB. Here is how my configuration for my devices looks:
+The devices make great Bluetooth proxies, and ESPHome makes that trivial.
+Beyond that, the stock firmware has some rough edges:
+
+- Devices show up in Home Assistant as one device with a flat set of sensors ([roomsense/firmware#13](https://github.com/roomsense/firmware/issues/13)).
+- The setup access point keeps broadcasting with its default password even after Wi-Fi connects ([roomsense/firmware#1](https://github.com/roomsense/firmware/issues/1)).
+- No firmware updates since Sep 2024.
+
+## Installation
+
+The device flashes over USB like any other ESP32. Because these files are
+package fragments, include them from your own device config:
 
 ```yaml
 esphome:
-    name: roomsense-iq-office
-    friendly_name: RoomsenseIQ Office
-    name_add_mac_suffix: true
-    comment: Esphome Version of RoomsenseIQ firmware
+  name: roomsense-iq-office
+  friendly_name: RoomsenseIQ Office
+  name_add_mac_suffix: true
 
 esp32:
-    board: esp32-s3-devkitc-1
-    variant: esp32s3
-    framework:
-        type: esp-idf
+  board: esp32-s3-devkitc-1
+  variant: esp32s3
+  framework:
+    type: esp-idf
 
 packages:
-    # I'm using shared configuration across multiple esp-home devices 
-    wifi: !include common/wifi.yaml
-    common: !include common/common.config.yaml
-    ble_presence_sensors: !include common/ble_presence_sensors.yaml
-    
-    # Here is how configuration from this repository is included
-    RoomsenseIQ: 
-        url: https://github.com/talmuth/RoomsenseIQ_Esphome
-        # if you have base device only
-        files: [roomsense-base.yaml]
-        
-        # or, if you also have ClimateSense attached
-        files: [roomsense-base.yaml, climatesense.yaml]
-        
-        # or, you want to include specific sensors only
-        files: [components/mpm10.yaml, components/debug.yaml]
+  # your own shared config
+  wifi: !include common/wifi.yaml
+
+  RoomsenseIQ:
+    url: https://github.com/talmuth/RoomsenseIQ_Esphome
+    # base device only:
+    files: [roomsense-base.yaml]
+    # or base + ClimateSense expansion board:
+    # files: [roomsense-base.yaml, climatesense.yaml]
+    # or specific fragments only:
+    # files: [components/mpm10.yaml, components/debug.yaml]
 ```
 
-## ⚠️ Notes
+## Notes
 
-🚨 **CO sensor from ClimateSense (TGS5141) is connected to PIN20, and current ESPHome version doesn't allow ADC on this pin, so you will get an error while attempting to build/validate the configuration.**
+The ClimateSense CO sensor (TGS5141) is on GPIO20 (ADC2).
+
+On **esphome 2025.8.0 and newer** it builds and runs with Wi-Fi enabled out of the
+box, no patch needed: the ESP-IDF v5 ADC rewrite
+([esphome#9021](https://github.com/esphome/esphome/pull/9021)) dropped the old
+"ESP32S3 doesn't support ADC on this pin when Wi-Fi is configured" restriction (the
+`final_validate_config` check no longer exists in the ADC component).
+
+On **esphome older than 2025.8.0** that check rejects the build:
 
 ```log
-Failed config
-
-sensor.adc: [source /config/.esphome/packages/b925f83b/components/tgs5141.yaml:2]
-    
+sensor.adc: [source .../components/tgs5141.yaml:2]
     ESP32S3 doesn't support ADC on this pin when Wi-Fi is configured.
 ```
 
-To avoid this you can either not include the complete setup for ClimateSense, or modify the `final_validate_config` method in `/esphome/esphome/components/adc/sensor.py` file from your esphome installation:
+Either omit `components/tgs5141.yaml`, or patch `final_validate_config` in your
+esphome install's `esphome/components/adc/sensor.py` to whitelist GPIO20:
 
 ```diff
 diff --git a/esphome/components/adc/sensor.py b/esphome/components/adc/sensor.py
@@ -118,12 +142,6 @@ index 3309bd04..f39ff3a8 100644
                                  f"{variant} doesn't support ADC on this pin when Wi-Fi is configured"
 ```
 
-### 📝 Todo
+## Support
 
-- [ ] Calibrate all ADC sensors according to the original firmware
-- [ ] Implement on-device automation to use LED to show different statuses
-
-## 🎉 Support This Project
-
-If you find this project helpful, consider supporting me:  
-[☕ Buy Me a Coffee](https://buymeacoffee.com/talmuth)
+If this is useful, you can [buy me a coffee](https://buymeacoffee.com/talmuth).

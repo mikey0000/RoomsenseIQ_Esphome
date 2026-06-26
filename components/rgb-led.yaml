@@ -22,14 +22,24 @@ light:
     green: output_green
     blue: output_blue
     id: status_light
+    # Status indicator, not a room light: config category excludes it from
+    # 'all lights' service calls, area/device-wide targeting and voice
+    # assistants, while staying manually controllable in HA.
+    entity_category: config
+    # Stock writes raw PWM duty (rgb_led_set_color); the effect values in
+    # this file are stock duty numbers, so disable ESPHome's default 2.8
+    # gamma (it crushed 16% yellow to ~0.6% duty - green channel died,
+    # alerts blinked red).
+    gamma_correct: 1.0
     effects:
       - lambda:
           name: "Occupied" # Static Orange
+          # stock: RGB(255,120,0)/LED_DENSITY=10 -> ~10% brightness (rgb_led.c:224)
           update_interval: never
           lambda: |-
             auto call = id(status_light).turn_on();
-            call.set_rgb(1, .5, 0);
-            call.set_brightness(.5);
+            call.set_rgb(1, .47, 0);
+            call.set_brightness(.1);
             call.perform();
       - lambda:
           name: "Vacant" # Static Blue
@@ -41,42 +51,65 @@ light:
             call.perform();
       - strobe:
           name: "Elevated Airborne Pollution" # Flashing yellow
+          # stock: RGB(40,40,0) pure yellow, 1s on / 1s off (rgb_led.c:240-245)
           colors:
             - state: true
-              brightness: 75%
+              brightness: 16%
               red: 100%
-              green: 90%
+              green: 100%
               blue: 0%
-              duration: 500ms
+              duration: 1000ms
             - state: false
-              duration: 250ms
+              duration: 1000ms
       - strobe:
           name: "Extreme Airborne Pollution" # Flashing purple
+          # stock: RGB(80,16,125) blue-violet, 1s on / 1s off (rgb_led.c:246-251)
           colors:
             - state: true
-              brightness: 75%
-              red: 100%
-              green: 0%
+              brightness: 49%
+              red: 64%
+              green: 13%
               blue: 100%
-              duration: 500ms
+              duration: 1000ms
             - state: false
-              duration: 250ms
+              duration: 1000ms
+      - strobe:
+          name: "Calibrating"
+          # ESPHome addition (stock has no LED calibration indication):
+          # slow cyan blink while the CO2 fresh-air dwell runs.
+          colors:
+            - state: true
+              brightness: 50%
+              red: 0%
+              green: 100%
+              blue: 100%
+              duration: 1000ms
+            - state: false
+              duration: 1000ms
       - strobe:
           name: "Wifi Disconnected"
+          # stock: orange(255,120,0 @10%) <-> blue(0,0,255 @50%) alternating
+          # 1s each with no off-gap (rgb_led.c:141-146)
           colors:
             - state: true
-              brightness: 75%
+              brightness: 10%
               red: 100%
-              green: 50%
+              green: 47%
               blue: 0%
-              duration: 500ms
-            - state: false
-              duration: 250ms
+              duration: 1000ms
             - state: true
-              brightness: 75%
+              brightness: 50%
               red: 0%
               green: 0%
-              blue: 50%
-              duration: 500ms
-            - state: false
-              duration: 250ms
+              blue: 100%
+              duration: 1000ms
+switch:
+  # Stock master LED enable (rgb_led.c:134, persisted in NVS, default on;
+  # when off the status light is forced dark by the LED select loop).
+  - platform: template
+    name: "LED Enable"
+    id: led_enable
+    optimistic: true
+    restore_mode: RESTORE_DEFAULT_ON
+    entity_category: config
+    icon: mdi:led-on

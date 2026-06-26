@@ -2,9 +2,11 @@
 sensor:
   - platform: scd4x
     id: scd41_sensor
+    update_interval: 5s  # stock cadence (~5s measurement loop)
     co2:
       name: "CO2"
-    temperature_offset: 12 # based on the firmware code of the RoomsenseIQ itself
+      id: scd4x_co2
+    temperature_offset: 12.1 # stock firmware value (climatesense.c:371); also feeds SGP40 VOC compensation
     temperature:
       name: "Sensor Temperature"
       id: scd4x_temp
@@ -12,12 +14,113 @@ sensor:
       name: "Sensor Humidity"
       id: scd4x_hum
 
+  # Dew point via the Magnus formula, exactly as stock
+  # (climatesense.c:86-98, a=17.27 b=237.7). Feeds the Phase 3 mold alert
+  # (temperature <= dew point).
+  - platform: template
+    name: "Dew Point"
+    id: dew_point
+    unit_of_measurement: "°C"
+    device_class: temperature
+    state_class: measurement
+    accuracy_decimals: 1
+    update_interval: 30s
+    lambda: |-
+      float t = id(scd4x_temp).state;
+      float rh = id(scd4x_hum).state;
+      if (isnan(t) || isnan(rh) || rh <= 0) return NAN;
+      const float a = 17.27, b = 237.7;
+      float alpha = (a * t) / (b + t) + logf(rh / 100.0f);
+      return (b * alpha) / (a - alpha);
+
 api:
   actions:
     - action: calibrate_co2_value
       variables:
         co2_ppm: int
       then:
-        - scd4x.perform_forced_calibration:
-            value: !lambda 'return co2_ppm;'
-            id: scd41_sensor
+        - script.execute:
+            id: co2_forced_calibration
+            target_ppm: !lambda 'return co2_ppm;'
+
+button:
+  # Stock-parity forced recalibration: run the device in fresh air for at
+  # least 3 minutes of periodic measurement first, then press. Stock assumes
+  # 421 ppm outdoor CO2 (climatesense.c:516).
+  - platform: template
+    name: "CO2 Forced Calibration (outdoor 421ppm)"
+    entity_category: config
+    icon: mdi:molecule-co2
+    on_press:
+      - script.execute:
+          id: co2_forced_calibration
+          target_ppm: 421
+
+# --- calibration flow + bookkeeping ------------------------------------
+# Stock flow (climatesense.c:483-530): after triggering, the sensor must
+# run periodic measurement in fresh air for >= 3 minutes BEFORE the FRC
+# command. The script reproduces that dwell, signals progress on the
+# text sensor and (via the co2_calibrating global read by the air-quality
+# LED loop) on the status light, then stamps the completion time into an
+# NVS-persisted epoch shown as the diagnostic text sensor.
+
+time:
+  - platform: homeassistant
+    id: scd4x_cal_time
+
+globals:
+  - id: co2_last_cal_epoch
+    type: uint32_t
+    restore_value: true
+    initial_value: '0'
+  - id: co2_calibrating
+    type: bool
+    initial_value: 'false'
+
+text_sensor:
+  - platform: template
+    name: "CO2 Last Calibration"
+    id: co2_last_calibration
+    entity_category: diagnostic
+    icon: mdi:calendar-check
+    update_interval: never
+
+script:
+  - id: co2_forced_calibration
+    mode: single  # re-presses during the dwell are ignored
+    parameters:
+      target_ppm: int
+    then:
+      - lambda: |-
+          id(co2_calibrating) = true;
+          id(co2_last_calibration).publish_state("calibrating: keep in fresh air (3 min)...");
+      - delay: 180s  # stock dwell: >=3 min periodic measurement (climatesense.c:486)
+      - scd4x.perform_forced_calibration:
+          value: !lambda 'return target_ppm;'
+          id: scd41_sensor
+      - delay: 2s  # let the FRC command settle (stock waits too, :515)
+      - script.execute: co2_record_calibration
+      - lambda: 'id(co2_calibrating) = false;'
+  - id: co2_record_calibration
+    then:
+      - lambda: |-
+          auto now = id(scd4x_cal_time).now();
+          if (now.is_valid()) {
+            id(co2_last_cal_epoch) = now.timestamp;
+          }
+      - script.execute: co2_publish_cal_date
+  - id: co2_publish_cal_date
+    then:
+      - lambda: |-
+          if (id(co2_last_cal_epoch) == 0) {
+            id(co2_last_calibration).publish_state("never");
+            return;
+          }
+          ESPTime t = ESPTime::from_epoch_local(id(co2_last_cal_epoch));
+          id(co2_last_calibration).publish_state(t.strftime("%Y-%m-%d %H:%M"));
+
+esphome:
+  on_boot:
+    priority: -100
+    then:
+      - script.execute: co2_publish_cal_date

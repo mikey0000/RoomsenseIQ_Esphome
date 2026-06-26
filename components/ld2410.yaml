@@ -20,8 +20,10 @@ binary_sensor:
   - platform: ld2410
     has_target:
       name: Presence
+      id: ld2410_has_target
     has_moving_target:
       name: Moving Target
+      id: ld2410_moving_target
     has_still_target:
       name: Still Target
     out_pin_presence_status:
@@ -31,121 +33,251 @@ sensor:
   - platform: ld2410
     light:
       name: light
+      state_class: measurement
+      filters:
+        - throttle: 5s
     moving_distance:
       name : Moving Distance
+      state_class: measurement
+      filters:
+        - throttle: 1s
     still_distance:
       name: Still Distance
+      state_class: measurement
+      filters:
+        - throttle: 1s
     moving_energy:
       name: Move Energy
+      state_class: measurement
+      filters:
+        - throttle: 1s
     still_energy:
       name: Still Energy
+      state_class: measurement
+      filters:
+        - throttle: 1s
     detection_distance:
       name: Detection Distance
+      id: ld2410_detection_distance
+      state_class: measurement
+      filters:
+        # Reject single-frame spikes (radar jumps to 0/garbage at close
+        # range); stock smooths with a slew-limited moving average
+        # (ld2410.c:926-998).
+        - median:
+            window_size: 5
+            send_every: 1
+            send_first_at: 1
+        # radar publishes per frame (~10Hz); 500ms keeps the 1s direction
+        # loop fresh while cutting API/recorder chatter
+        - throttle: 500ms
     g0:
       move_energy:
         name: g0 move energy
+        id: g0_move_energy
       still_energy:
         name: g0 still energy
+        id: g0_still_energy
     g1:
       move_energy:
         name: g1 move energy
+        id: g1_move_energy
       still_energy:
         name: g1 still energy
+        id: g1_still_energy
     g2:
       move_energy:
         name: g2 move energy
+        id: g2_move_energy
       still_energy:
         name: g2 still energy
+        id: g2_still_energy
     g3:
       move_energy:
         name: g3 move energy
+        id: g3_move_energy
       still_energy:
         name: g3 still energy
+        id: g3_still_energy
     g4:
       move_energy:
         name: g4 move energy
+        id: g4_move_energy
       still_energy:
         name: g4 still energy
+        id: g4_still_energy
     g5:
       move_energy:
         name: g5 move energy
+        id: g5_move_energy
       still_energy:
         name: g5 still energy
+        id: g5_still_energy
     g6:
       move_energy:
         name: g6 move energy
+        id: g6_move_energy
       still_energy:
         name: g6 still energy
+        id: g6_still_energy
     g7:
       move_energy:
         name: g7 move energy
+        id: g7_move_energy
       still_energy:
         name: g7 still energy
+        id: g7_still_energy
     g8:
       move_energy:
         name: g8 move energy
+        id: g8_move_energy
       still_energy:
         name: g8 still energy
+        id: g8_still_energy
 
 number:
   - platform: ld2410
     timeout:
       name: timeout
+      id: ld2410_timeout
     light_threshold:
       name: light threshold
     max_move_distance_gate:
       name: max move distance gate
+      id: ld2410_max_move_gate
     max_still_distance_gate:
       name: max still distance gate
+      id: ld2410_max_still_gate
     g0:
       move_threshold:
         name: g0 move threshold
+        id: g0_move_threshold
       still_threshold:
         name: g0 still threshold
+        id: g0_still_threshold
     g1:
       move_threshold:
         name: g1 move threshold
+        id: g1_move_threshold
       still_threshold:
         name: g1 still threshold
+        id: g1_still_threshold
     g2:
       move_threshold:
         name: g2 move threshold
+        id: g2_move_threshold
       still_threshold:
         name: g2 still threshold
+        id: g2_still_threshold
     g3:
       move_threshold:
         name: g3 move threshold
+        id: g3_move_threshold
       still_threshold:
         name: g3 still threshold
+        id: g3_still_threshold
     g4:
       move_threshold:
         name: g4 move threshold
+        id: g4_move_threshold
       still_threshold:
         name: g4 still threshold
+        id: g4_still_threshold
     g5:
       move_threshold:
         name: g5 move threshold
+        id: g5_move_threshold
       still_threshold:
         name: g5 still threshold
+        id: g5_still_threshold
     g6:
       move_threshold:
         name: g6 move threshold
+        id: g6_move_threshold
       still_threshold:
         name: g6 still threshold
+        id: g6_still_threshold
     g7:
       move_threshold:
         name: g7 move threshold
+        id: g7_move_threshold
       still_threshold:
         name: g7 still threshold
+        id: g7_still_threshold
     g8:
       move_threshold:
         name: g8 move threshold
+        id: g8_move_threshold
       still_threshold:
         name: g8 still threshold
+        id: g8_still_threshold
 
 switch:
   - platform: ld2410
     engineering_mode:
       name: "Engineering Mode (ld2410)"
+      id: ld2410_engineering_mode
     bluetooth:
       name: "Control Bluetooth (ld2410)"
+
+# Stock RoomsenseIQ factory calibration (roomsense-iq firmware ld2410.c factory_reset()):
+# absence timeout 20s, max move/still gate 8 (600cm), per-gate thresholds below.
+# The ld2410 number entities read their values FROM the radar, and the radar
+# persists settings in its own flash — so defaults are pushed once on first
+# boot (guarded by a flag survived in NVS) and on demand via the button.
+globals:
+  - id: ld2410_stock_defaults_applied
+    type: bool
+    restore_value: true
+    initial_value: 'false'
+
+script:
+  - id: ld2410_apply_stock_defaults
+    mode: single
+    then:
+      - number.set: { id: ld2410_timeout, value: 20 }
+      - number.set: { id: ld2410_max_move_gate, value: 8 }
+      - number.set: { id: ld2410_max_still_gate, value: 8 }
+      - delay: 200ms
+      - number.set: { id: g0_move_threshold, value: 35 }
+      - number.set: { id: g0_still_threshold, value: 25 }
+      - number.set: { id: g1_move_threshold, value: 25 }
+      - number.set: { id: g1_still_threshold, value: 15 }
+      - number.set: { id: g2_move_threshold, value: 20 }
+      - number.set: { id: g2_still_threshold, value: 10 }
+      - delay: 200ms
+      - number.set: { id: g3_move_threshold, value: 15 }
+      - number.set: { id: g3_still_threshold, value: 10 }
+      - number.set: { id: g4_move_threshold, value: 15 }
+      - number.set: { id: g4_still_threshold, value: 10 }
+      - number.set: { id: g5_move_threshold, value: 15 }
+      - number.set: { id: g5_still_threshold, value: 10 }
+      - delay: 200ms
+      - number.set: { id: g6_move_threshold, value: 15 }
+      - number.set: { id: g6_still_threshold, value: 10 }
+      - number.set: { id: g7_move_threshold, value: 15 }
+      - number.set: { id: g7_still_threshold, value: 10 }
+      - number.set: { id: g8_move_threshold, value: 15 }
+      - number.set: { id: g8_still_threshold, value: 10 }
+      - globals.set:
+          id: ld2410_stock_defaults_applied
+          value: 'true'
+      - logger.log: "LD2410 stock RoomsenseIQ defaults applied"
+
+button:
+  - platform: template
+    name: "LD2410 Apply Stock Defaults"
+    entity_category: config
+    on_press:
+      - script.execute: ld2410_apply_stock_defaults
+
+esphome:
+  on_boot:
+    priority: -100
+    then:
+      - if:
+          condition:
+            lambda: 'return !id(ld2410_stock_defaults_applied);'
+          then:
+            - delay: 10s  # let the radar settle before pushing config
+            - script.execute: ld2410_apply_stock_defaults

@@ -1,0 +1,53 @@
+# Direction detection — YAML port of the stock 3-state machine
+# (roomsense-iq/firmware/components/direction-detection/direction-detection.c):
+# while motion is active (radar moving-target or PIR), compare the detected
+# distance against the value from the previous 1 s tick with 11 cm hysteresis
+# (DISTANCE_RESOLUTION, ld2410.h:32): distance grew -> away, shrank -> towards.
+# Like stock, the previous distance is refreshed continuously, so detection
+# keeps re-evaluating for as long as movement lasts (stock loops at 100 ms and
+# compares over a 1 s window; here both happen on the same 1 s tick).
+# Requires ids from ld2410.yaml (ld2410_detection_distance,
+# ld2410_moving_target) and ira-s210st01.yaml (pir).
+
+globals:
+  - id: direction_prev_distance
+    type: float
+    initial_value: 'NAN'
+
+text_sensor:
+  - platform: template
+    name: "Movement Direction"
+    id: movement_direction
+    icon: mdi:account-arrow-left-outline
+
+interval:
+  - interval: 1s
+    then:
+      - lambda: |-
+          static const float DISTANCE_RESOLUTION = 11.0;  // cm, stock ld2410.h:32
+          // Radar distance is unreliable below ~150-190cm; stock pins it to a
+          // fabricated stable value there (ld2410.c:1232-1244, "detected_distance
+          // is not accurate in distances lower than 190cm"). We suppress
+          // direction detection in that zone instead of fabricating readings.
+          static const float CLOSE_RANGE = 150.0;  // cm
+          float curr = id(ld2410_detection_distance).state;
+          float prev = id(direction_prev_distance);
+          id(direction_prev_distance) = curr;
+
+          bool active = id(ld2410_moving_target).state || id(pir).state;
+          std::string dir = "none";
+          if (active && !isnan(prev) && !isnan(curr)
+              && prev >= CLOSE_RANGE && curr >= CLOSE_RANGE) {
+            float change = curr - prev;
+            if (change > DISTANCE_RESOLUTION) {
+              dir = "away";
+            } else if (change < -DISTANCE_RESOLUTION) {
+              dir = "towards";
+            }
+          }
+          // publish only on change; a detected direction naturally resets to
+          // "none" on the next tick unless movement continues the same way
+          // (stock holds AWAY/TOWARDS for 1 s, then re-arms).
+          if (id(movement_direction).state != dir) {
+            id(movement_direction).publish_state(dir);
+          }
